@@ -2,70 +2,75 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-# הגדרות תצוגה
-st.set_page_config(page_title="Mega Market Scanner", layout="wide")
+st.set_page_config(page_title="Ultimate Stock Screener", layout="wide")
 
-st.title("🚀 סורק שוק מסיבי (3,000+ מניות)")
-st.write("הסורק מנתח את מניות ה-S&P 500, Nasdaq ומניות צמיחה נוספות.")
+st.title("🛠️ סורק מניות מתקדם - פילטרים מלאים")
 
-@st.cache_data(ttl=3600)
-def get_all_tickers():
-    # משיכת רשימות מסיביות מויקיפדיה
-    try:
-        url_sp = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        sp500 = pd.read_html(url_sp)[0]['Symbol'].tolist()
-        url_nasdaq = "https://en.wikipedia.org/wiki/Nasdaq-100"
-        nasdaq100 = pd.read_html(url_nasdaq)[4]['Ticker'].tolist()
-        # הוספת מניות סיכון גבוה פופולריות
-        extra = ['MARA', 'RIOT', 'COIN', 'GME', 'AMC', 'UPST', 'PLTR', 'SOFI', 'MSTR', 'NKLA', 'RIVN', 'LCID']
-        return list(set(sp500 + nasdaq100 + extra))
-    except:
-        return ['AAPL', 'TSLA', 'NVDA', 'AMD', 'MSFT', 'GOOG', 'MARA', 'COIN']
+# רשימת המניות לסריקה
+mega_list = [
+    'TSLA', 'NVDA', 'AMD', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NFLX', 'PLTR', 
+    'MARA', 'COIN', 'MSTR', 'UPST', 'SOFI', 'GME', 'AMC', 'AI', 'RIVN', 'LCID', 
+    'SMCI', 'ARM', 'MU', 'INTC', 'TSM', 'SQ', 'PYPL', 'HOOD', 'SHOP', 'SNOW',
+    'DKNG', 'U', 'PATH', 'IONQ', 'QS', 'PLUG', 'NVAX', 'MRNA', 'ABNB', 'DASH'
+]
 
-def scan_bulk(tickers, min_beta, max_cap):
+def scan_pro(tickers, filters):
     results = []
-    progress_bar = st.progress(0)
-    total = len(tickers)
-    
+    prog = st.progress(0)
     for i, ticker in enumerate(tickers):
         try:
-            t = yf.Ticker(ticker.replace('.', '-'))
+            t = yf.Ticker(ticker)
             info = t.info
-            beta = info.get('beta', 0)
-            mkt_cap = info.get('marketCap', 0) / 1_000_000_000
             
-            # פילטר בסיסי תוך כדי ריצה כדי להאיץ תוצאות
-            if beta and beta >= min_beta and mkt_cap <= max_cap:
-                results.append({
-                    'מניה': ticker,
-                    'שם': info.get('longName', 'N/A'),
-                    'תנודתיות (Beta)': beta,
-                    'שווי שוק ($B)': round(mkt_cap, 2),
-                    'מחיר': info.get('currentPrice', 0),
-                    'שורט (%)': round(info.get('shortPercentOfFloat', 0) * 100, 2)
-                })
+            # שליפת נתונים
+            beta = info.get('beta', 0)
+            pe = info.get('trailingPE', None)
+            vol = info.get('averageVolume', 0)
+            mkt_cap = info.get('marketCap', 0) / 1_000_000_000
+            price = info.get('currentPrice', 0)
+            
+            # לוגיקת פילטרים
+            if beta < filters['min_beta']: continue
+            if mkt_cap > filters['max_cap']: continue
+            if vol < filters['min_vol']: continue
+            if filters['max_pe'] and (pe is None or pe > filters['max_pe']): continue
+            
+            results.append({
+                'מניה': ticker,
+                'מחיר': price,
+                'Beta': beta,
+                'מכפיל רווח (P/E)': pe if pe else "N/A",
+                'מחזור יומי ממוצע': f"{vol:,}",
+                'שווי שוק ($B)': round(mkt_cap, 2)
+            })
         except:
             continue
-        progress_bar.progress((i + 1) / total)
+        prog.progress((i + 1) / len(tickers))
     return pd.DataFrame(results)
 
-# ממשק צד
-st.sidebar.header("פילטרים אגרסיביים")
-beta_val = st.sidebar.slider("Beta מינימלית (תנודתיות)", 1.0, 4.0, 1.5)
-cap_val = st.sidebar.number_input("שווי שוק מקסימלי ($B)", value=50)
+# --- תפריט פילטרים בצד ---
+st.sidebar.header("⚙️ הגדרות סריקה")
 
-if st.button('הרץ סריקה על כל השוק'):
-    all_tickers = get_all_tickers()
-    st.info(f"מתחיל לסרוק {len(all_tickers)} מניות... זה יקח כדקה.")
+f_beta = st.sidebar.slider("Beta מינימלית", 0.0, 4.0, 1.2)
+f_cap = st.sidebar.number_input("שווי שוק מקסימלי ($B)", value=500)
+f_vol = st.sidebar.number_input("מחזור מסחר מינימלי (מניות)", value=1000000)
+f_pe = st.sidebar.number_input("מכפיל רווח מקסימלי (0 = התעלם)", value=0)
+
+filters = {
+    'min_beta': f_beta,
+    'max_cap': f_cap,
+    'min_vol': f_vol,
+    'max_pe': f_pe if f_pe > 0 else None
+}
+
+if st.button('🚀 הרץ סריקה מתקדמת'):
+    st.info(f"סורק לפי פילטרים מותאמים אישית...")
+    data = scan_pro(mega_list, filters)
     
-    found_data = scan_bulk(all_tickers, beta_val, cap_val)
-    
-    if not found_data.empty:
-        st.success(f"נמצאו {len(found_data)} מניות שעונות על הקריטריונים!")
-        st.dataframe(found_data.sort_values(by='תנודתיות (Beta)', ascending=False))
+    if not data.empty:
+        st.success(f"נמצאו {len(data)} מניות!")
+        st.dataframe(data)
     else:
-        st.warning("לא נמצאו מניות. נסה להוריד את ה-Beta או להעלות את שווי השוק.")
+        st.warning("לא נמצאו מניות שעונות על כל הפילטרים. נסה להקל בתנאים.")
 
-st.divider()
-st.caption("הנתונים נמשכים מ-Yahoo Finance. השימוש על אחריות המשתמש בלבד.")
 
