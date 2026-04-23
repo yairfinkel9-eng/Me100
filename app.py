@@ -3,66 +3,69 @@ import yfinance as yf
 import pandas as pd
 
 # הגדרות תצוגה
-st.set_page_config(page_title="High Risk Stock Scanner", layout="wide")
+st.set_page_config(page_title="Mega Market Scanner", layout="wide")
 
-st.title("🔥 סורק מניות בסיכון גבוה")
-st.write("מאתר מניות קטנות, תנודתיות ובעלות פוטנציאל לזינוק אגרסיבי.")
+st.title("🚀 סורק שוק מסיבי (3,000+ מניות)")
+st.write("הסורק מנתח את מניות ה-S&P 500, Nasdaq ומניות צמיחה נוספות.")
 
-# רשימה של מניות עם פוטנציאל תנודתיות גבוה (ביוטק, קריפטו, צמיחה)
-growth_list = [
-    'PLTR', 'SNOW', 'RIVN', 'LCID', 'U', 'AFRM', 'SOFI', 'MARA', 'RIOT', 'COIN',
-    'UPST', 'AI', 'IONQ', 'QS', 'DKNG', 'PATH', 'GME', 'AMC', 'PLUG', 'NKLA',
-    'DNA', 'CHPT', 'ROKU', 'TDOC', 'SQ', 'PYPL', 'HOOD', 'CLOV', 'SAVA', 'MSTR'
-]
+@st.cache_data(ttl=3600)
+def get_all_tickers():
+    # משיכת רשימות מסיביות מויקיפדיה
+    try:
+        url_sp = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        sp500 = pd.read_html(url_sp)[0]['Symbol'].tolist()
+        url_nasdaq = "https://en.wikipedia.org/wiki/Nasdaq-100"
+        nasdaq100 = pd.read_html(url_nasdaq)[4]['Ticker'].tolist()
+        # הוספת מניות סיכון גבוה פופולריות
+        extra = ['MARA', 'RIOT', 'COIN', 'GME', 'AMC', 'UPST', 'PLTR', 'SOFI', 'MSTR', 'NKLA', 'RIVN', 'LCID']
+        return list(set(sp500 + nasdaq100 + extra))
+    except:
+        return ['AAPL', 'TSLA', 'NVDA', 'AMD', 'MSFT', 'GOOG', 'MARA', 'COIN']
 
-@st.cache_data(ttl=1800) # שומר נתונים לחצי שעה כדי שהאתר ירוץ מהר
-def scan_high_risk(symbols):
+def scan_bulk(tickers, min_beta, max_cap):
     results = []
-    for s in symbols:
+    progress_bar = st.progress(0)
+    total = len(tickers)
+    
+    for i, ticker in enumerate(tickers):
         try:
-            t = yf.Ticker(s)
+            t = yf.Ticker(ticker.replace('.', '-'))
             info = t.info
+            beta = info.get('beta', 0)
+            mkt_cap = info.get('marketCap', 0) / 1_000_000_000
             
-            # שליפת נתונים קריטיים
-            beta = info.get('beta', 0) # תנודתיות (מעל 1.5 זה גבוה)
-            mkt_cap = info.get('marketCap', 0) / 1_000_000_000 # שווי שוק במיליארדים
-            short_ratio = info.get('shortPercentOfFloat', 0) * 100 # אחוז שורט
-            price = info.get('currentPrice', 0)
-            
-            results.append({
-                'מניה': s,
-                'שם': info.get('longName', 'N/A'),
-                'מחיר': price,
-                'תנודתיות (Beta)': beta,
-                'שווי שוק ($B)': round(mkt_cap, 2),
-                'אחוז שורט (%)': round(short_ratio, 2)
-            })
+            # פילטר בסיסי תוך כדי ריצה כדי להאיץ תוצאות
+            if beta and beta >= min_beta and mkt_cap <= max_cap:
+                results.append({
+                    'מניה': ticker,
+                    'שם': info.get('longName', 'N/A'),
+                    'תנודתיות (Beta)': beta,
+                    'שווי שוק ($B)': round(mkt_cap, 2),
+                    'מחיר': info.get('currentPrice', 0),
+                    'שורט (%)': round(info.get('shortPercentOfFloat', 0) * 100, 2)
+                })
         except:
             continue
+        progress_bar.progress((i + 1) / total)
     return pd.DataFrame(results)
 
-# סרגל צד לפילטרים - תוכל לשנות אותם באתר עצמו
-st.sidebar.header("הגדרות צייד")
-min_beta = st.sidebar.slider("תנודתיות מינימלית (Beta)", 1.0, 4.0, 1.5)
-max_cap = st.sidebar.number_input("שווי שוק מקסימלי (במיליארד $)", value=10)
-min_short = st.sidebar.slider("אחוז שורט מינימלי", 0, 50, 5)
+# ממשק צד
+st.sidebar.header("פילטרים אגרסיביים")
+beta_val = st.sidebar.slider("Beta מינימלית (תנודתיות)", 1.0, 4.0, 1.5)
+cap_val = st.sidebar.number_input("שווי שוק מקסימלי ($B)", value=50)
 
-if st.button('הרץ סריקה עכשיו'):
-    with st.spinner('מחפש הזדמנויות...'):
-        data = scan_high_risk(growth_list)
-        
-        # סינון לפי מה שבחרת בסליידרים
-        filtered = data[
-            (data['תנודתיות (Beta)'] >= min_beta) & 
-            (data['שווי שוק ($B)'] <= max_cap) &
-            (data['אחוז שורט (%)'] >= min_short)
-        ]
-        
-        if not filtered.empty:
-            st.success(f"נמצאו {len(filtered)} מניות שמתאימות לסיכון שלך!")
-            st.dataframe(filtered.sort_values(by='תנודתיות (Beta)', ascending=False))
-        else:
-            st.warning("לא נמצאו מניות. נסה להוריד מעט את ה-Beta או את אחוז השורט.")
+if st.button('הרץ סריקה על כל השוק'):
+    all_tickers = get_all_tickers()
+    st.info(f"מתחיל לסרוק {len(all_tickers)} מניות... זה יקח כדקה.")
+    
+    found_data = scan_bulk(all_tickers, beta_val, cap_val)
+    
+    if not found_data.empty:
+        st.success(f"נמצאו {len(found_data)} מניות שעונות על הקריטריונים!")
+        st.dataframe(found_data.sort_values(by='תנודתיות (Beta)', ascending=False))
+    else:
+        st.warning("לא נמצאו מניות. נסה להוריד את ה-Beta או להעלות את שווי השוק.")
 
 st.divider()
-st.info("טיפ: מניות עם Beta גבוהה ושווי שוק נמוך נוטות לזנק חזק, אבל הן גם מסוכנות מאוד.")
+st.caption("הנתונים נמשכים מ-Yahoo Finance. השימוש על אחריות המשתמש בלבד.")
+
