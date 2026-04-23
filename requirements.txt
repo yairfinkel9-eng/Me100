@@ -1,6 +1,5 @@
 streamlit
 yfinance
 pandas
+deep-translator
 lxml
-html5lib
-
