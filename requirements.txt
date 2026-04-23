@@ -1,5 +1,4 @@
 streamlit
-yfinance
-pandas
-deep-translator
-lxml
+​yfinance
+​pandas
+​st-gsheets-connection
