@@ -1,4 +1,4 @@
-​streamlit
-​yfinance
-​pandas
-​st-gsheets-connection
+streamlit
+yfinance
+pandas
+st-gsheets-connection
