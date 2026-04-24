@@ -3,103 +3,80 @@ import yfinance as yf
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 
-# הגדרות עמוד - מותאם לטלפון ולמחשב
-st.set_page_config(page_title="My Portfolio Advisor", layout="wide")
+# הגדרות עמוד ועיצוב CSS
+st.set_page_config(page_title="Money Maker & Portfolio", layout="wide")
 
-st.markdown("<h1 style='text-align: center;'>💰 ניהול תיק השקעות חכם</h1>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    .stApp { background-color: #0e1117; }
+    .main-title {
+        text-align: center; color: #2ecc71; font-size: 3rem;
+        font-weight: bold; text-shadow: 2px 2px #000000; margin-bottom: 30px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# קישור לגוגל שייטס (חובה להשתמש בחשבון פרטי כדי שיהיו הרשאות Editor לכולם)
-SHEET_URL = "כאן_שמים_את_הקישור_מהחשבון_הפרטי"
+st.markdown('<h1 class="main-title">💰 סורק המיליונרים והתיק האישי 💰</h1>', unsafe_allow_html=True)
 
-# --- פונקציה לשליפת מחיר חי מהבורסה ---
-def get_live_price(ticker):
-    try:
-        stock = yf.Ticker(ticker.replace('.', '-'))
-        return stock.info.get('currentPrice') or stock.info.get('regularMarketPrice')
-    except:
-        return None
+# --- הגדרות Google Sheets ---
+# החלף את הקישור למטה בקישור לגיליון שלך (שיתוף ל-Editor - Anyone with the link)
+SHEET_URL = "כאן_שמים_את_הקישור_לגוגל_שייטס_שלך"
 
-# --- חיבור וטעינה מהענן ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    existing_data = conn.read(spreadsheet=SHEET_URL)
-    portfolio_df = existing_data.dropna(how='all')
-except Exception as e:
+    portfolio_df = conn.read(spreadsheet=SHEET_URL).dropna(how='all')
+except:
     portfolio_df = pd.DataFrame(columns=['מניה', 'מחיר קנייה', 'כמות', 'תאריך'])
 
-# --- חישובי תיק ---
-if not portfolio_df.empty:
-    with st.spinner('מעדכן נתונים חיים מהבורסה...'):
-        # 1. שליפת מחיר עדכני לכל מניה
-        portfolio_df['מחיר נוכחי'] = portfolio_df['מניה'].apply(get_live_price)
-        
-        # 2. חישוב רווח/הפסד באחוזים
-        portfolio_df['רווח/הפסד %'] = ((portfolio_df['מחיר נוכחי'] - portfolio_df['מחיר קנייה']) / portfolio_df['מחיר קנייה']) * 100
-        
-        # 3. חישוב שווי הפוזיציה (בכסף)
-        portfolio_df['שווי בתיק ($)'] = portfolio_df['מחיר נוכחי'] * portfolio_df['כמות']
-        
-        # 4. חישוב אחוז מהתיק הכולל
-        total_value = portfolio_df['שווי בתיק ($)'].sum()
-        portfolio_df['% מהתיק'] = (portfolio_df['שווי בתיק ($)'] / total_value) * 100
+# --- פונקציות עזר ---
+def get_mega_list():
+    return list(set(['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'AMD', 'NFLX', 'PLTR', 'MARA', 'COIN', 'RIOT', 'MSTR', 'RKLB', 'TSEM', 'BABA', 'SHOP', 'SQ', 'PYPL']))
 
-    # תצוגת מדדים ראשיים (Metrics)
-    m1, m2 = st.columns(2)
-    m1.metric("שווי תיק כולל", f"${total_value:,.2f}")
-    
-    avg_profit = portfolio_df['רווח/הפסד %'].mean()
-    m2.metric("רווח/הפסד ממוצע", f"{avg_profit:.2f}%", delta=f"{avg_profit:.2f}%")
+def translate_sector(sector):
+    translation = {'Technology': 'טכנולוגיה', 'Financial Services': 'פיננסים', 'Consumer Cyclical': 'צריכה'}
+    return translation.get(sector, "כללי")
 
-    st.subheader("📋 פירוט האחזקות שלך")
-    
-    # פונקציית עיצוב לצבעי רווח/הפסד
-    def style_profit(val):
-        color = '#27ae60' if val > 0 else '#e74c3c' # ירוק או אדום
-        return f'color: {color}; font-weight: bold'
-
-    # הצגת הטבלה עם העיצובים
-    st.dataframe(portfolio_df.style.format({
-        'מחיר קנייה': '{:.2f}$',
-        'מחיר נוכחי': '{:.2f}$',
-        'רווח/הפסד %': '{:.2f}%',
-        'שווי בתיק ($)': '{:,.2f}$',
-        '% מהתיק': '{:.1f}%'
-    }).applymap(style_profit, subset=['רווח/הפסד %']), use_container_width=True)
-
-# --- הוספת מניה חדשה ---
-st.divider()
-st.subheader("➕ הוספת מניה שקנית")
-with st.container():
-    c1, c2, c3 = st.columns(3)
-    new_t = c1.text_input("סימול מניה (Ticker)", placeholder="למשל: NVDA")
-    new_p = c2.number_input("מחיר קנייה (ב-$)", min_value=0.0, step=0.1)
-    new_q = c3.number_input("כמות מניות", min_value=0.1, step=1.0)
-
-    if st.button("💾 שמור בתיק וסנכרן לענן"):
-        if new_t and new_p > 0 and new_q > 0:
-            new_data = pd.DataFrame([{
-                "מניה": new_t.upper(),
-                "מחיר קנייה": new_p,
-                "כמות": new_q,
-                "תאריך": pd.Timestamp.now().strftime("%Y-%m-%d")
-            }])
+def scan_stocks(tickers, filters):
+    results = []
+    prog = st.progress(0)
+    for i, ticker in enumerate(tickers):
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            price = info.get('currentPrice') or info.get('regularMarketPrice')
+            mkt_cap = info.get('marketCap', 0) / 1_000_000_000
+            beta = info.get('beta', 0)
+            y_return = info.get('52WeekChange', 0) * 100
             
-            # איחוד הנתונים ושמירה רק של עמודות הבסיס לענן
-            combined_df = pd.concat([portfolio_df[['מניה', 'מחיר קנייה', 'כמות', 'תאריך']], new_data], ignore_index=True)
-            
-            try:
-                conn.update(spreadsheet=SHEET_URL, data=combined_df)
-                st.success(f"המניה {new_t.upper()} נוספה בהצלחה!")
-                st.rerun() # רענון הדף לעדכון הטבלה
-            except:
-                st.error("שגיאה בסנכרון. וודא שהקישור לגליון תקין ושיש הרשאות עריכה.")
-        else:
-            st.warning("נא למלא את כל השדות בצורה תקינה.")
+            if beta >= filters['min_beta'] and y_return >= filters['min_return'] and mkt_cap <= filters['max_cap']:
+                results.append({
+                    'מניה': ticker, 'מחיר': price, 'Beta': round(beta, 2),
+                    'תשואה שנתית': f"{round(y_return, 1)}%", 'שווי שוק ($B)': round(mkt_cap, 2),
+                    'מגזר': translate_sector(info.get('sector')), 'תיאור': info.get('longBusinessSummary', '')
+                })
+        except: continue
+        prog.progress((i + 1) / len(tickers))
+    return pd.DataFrame(results)
 
-# כפתור מחיקה לניהול התיק
-if not portfolio_df.empty:
-    if st.sidebar.button("🗑️ מחק את כל התיק"):
-        empty_df = pd.DataFrame(columns=['מניה', 'מחיר קנייה', 'כמות', 'תאריך'])
-        conn.update(spreadsheet=SHEET_URL, data=empty_df)
-        st.sidebar.success("התיק נמחק!")
-        st.rerun()
+# --- תפריט צד (Sidebar) ---
+st.sidebar.header("⚙️ פילטרים")
+f_cap = st.sidebar.slider("שווי שוק מקסימלי ($B)", 10, 500, 500)
+f_beta = st.sidebar.slider("Beta מינימלית", 0.0, 4.0, 1.2)
+f_return = st.sidebar.slider("תשואה שנתית מינימלית (%)", -50, 200, 5)
+
+# --- חלק 1: סורק המניות ---
+if st.button('🚀 הרץ סריקה'):
+    mega_list = get_mega_list()
+    df_results = scan_stocks(mega_list, {'min_beta': f_beta, 'min_return': f_return, 'max_cap': f_cap})
+    
+    if not df_results.empty:
+        st.success(f"מצאתי {len(df_results)} מניות!")
+        for _, row in df_results.iterrows():
+            with st.expander(f"🔍 {row['מניה']} - מחיר: {row['מחיר']}$"):
+                st.write(f"**מגזר:** {row['מגזר']} | **Beta:** {row['Beta']}")
+                col_q, col_p, col_b = st.columns([1,1,1])
+                q = col_q.number_input(f"כמות", min_value=1, key=f"q_{row['מניה']}")
+                p = col_p.number_input(f"מחיר קנייה", value
